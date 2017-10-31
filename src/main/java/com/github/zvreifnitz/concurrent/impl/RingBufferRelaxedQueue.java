@@ -34,6 +34,7 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
 
     private static final VarHandle ReadReservationHandle;
     private static final VarHandle ReadCommitHandle;
+    private static final VarHandle ReadCacheHandle;
 
     static {
         try {
@@ -42,6 +43,7 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
             WriteCommitHandle = l.findVarHandle(RingBufferRelaxedQueue.class, "writeCommit", long.class);
             ReadReservationHandle = l.findVarHandle(RingBufferRelaxedQueue.class, "readReservation", long.class);
             ReadCommitHandle = l.findVarHandle(RingBufferRelaxedQueue.class, "readCommit", long.class);
+            ReadCacheHandle = l.findVarHandle(RingBufferRelaxedQueue.class, "readCache", long.class);
         } catch (ReflectiveOperationException e) {
             throw new Error(e);
         }
@@ -52,8 +54,8 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
     private final int size;
     private final int defaultEnqueueAllSize;
     private final Iterable<T> emptyIterable = new EmptyIterable<>();
-    private final ThreadLocal<LongWrapper> writeCommitLocal = ThreadLocal.withInitial(this::createWriteCommitLocal);
-    private final ThreadLocal<LongWrapper> readCommitLocal = ThreadLocal.withInitial(this::createReadCommitLocal);
+
+    private volatile long readCache = 0L;
 
     @jdk.internal.vm.annotation.Contended
     private volatile long writeReservation = 0L;
@@ -199,16 +201,16 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
     }
 
     private ReservationInterval reserveForWrite(final int desiredSize) {
-        final LongWrapper readCommitLocal = this.readCommitLocal.get();
         while (true) {
             final long currentWrite = (long) WriteReservationHandle.getAcquire(this);
             final long desiredWrite = (currentWrite + desiredSize);
-            if ((desiredWrite - readCommitLocal.value) <= this.size) {
+            final long cachedRead = (long) ReadCacheHandle.getOpaque(this);
+            if ((desiredWrite - cachedRead) <= this.size) {
                 if (WriteReservationHandle.weakCompareAndSetRelease(this, currentWrite, desiredWrite)) {
                     return new ReservationInterval(currentWrite, desiredWrite, desiredSize);
                 }
             } else {
-                readCommitLocal.value = (long) ReadCommitHandle.getAcquire(this);
+                ReadCacheHandle.setOpaque(this, ReadCommitHandle.getAcquire(this));
             }
         }
     }
@@ -222,22 +224,14 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
     }
 
     private ReservationInterval reserveForRead(final int maxSize) {
-        final LongWrapper writeCommitLocal = this.writeCommitLocal.get();
-        while (true) {
-            final long currentRead = (long) ReadReservationHandle.getAcquire(this);
-            final long desiredRead = Math.min(currentRead + maxSize, writeCommitLocal.value);
-            if (desiredRead > currentRead) {
-                if (ReadReservationHandle.weakCompareAndSetRelease(this, currentRead, desiredRead)) {
-                    return new ReservationInterval(currentRead, desiredRead, (int) (desiredRead - currentRead));
-                }
-            } else {
-                final long commitWrite = (long) WriteCommitHandle.getAcquire(this);
-                if (commitWrite > writeCommitLocal.value) {
-                    writeCommitLocal.value = commitWrite;
-                } else {
-                    return new ReservationInterval(currentRead, currentRead, 0);
-                }
-            }
+        final long currentRead = (long) ReadReservationHandle.getAcquire(this);
+        final long commitWrite = (long) WriteCommitHandle.getAcquire(this);
+        final long desiredRead = Math.min(currentRead + maxSize, commitWrite);
+        if ((desiredRead > currentRead)
+                && ReadReservationHandle.weakCompareAndSetRelease(this, currentRead, desiredRead)) {
+            return new ReservationInterval(currentRead, desiredRead, (int) (desiredRead - currentRead));
+        } else {
+            return new ReservationInterval(currentRead, currentRead, 0);
         }
     }
 
