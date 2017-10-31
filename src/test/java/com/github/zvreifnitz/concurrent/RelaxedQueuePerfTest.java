@@ -46,10 +46,17 @@ public class RelaxedQueuePerfTest {
     private int batchSize;
     private int numOfBatches;
 
+    private ConcurrentLinkedQueueAdapter<Object> concurrentLinkedQueueAdapter_Req;
+    private ConcurrentLinkedQueueAdapter<Object> concurrentLinkedQueueAdapter_Resp;
+    private RingBufferRelaxedQueue<Object> ringBufferRelaxedQueue_Req;
+    private RingBufferRelaxedQueue<Object> ringBufferRelaxedQueue_Resp;
+    private LinkedRelaxedQueue<Object> linkedRelaxedQueue_Req;
+    private LinkedRelaxedQueue<Object> linkedRelaxedQueue_Resp;
+
     public static void main(final String[] args) {
         final RelaxedQueuePerfTest test = new RelaxedQueuePerfTest();
         test.numOfThreads = 8;
-        test.batchSize = 1_000;
+        test.batchSize = 1;
         test.init();
         final long r1 = test.concurrentLinkedQueue();
         System.out.println(" concurrentLinkedQueue: " + (r1 / 1_000_000.0));
@@ -62,27 +69,27 @@ public class RelaxedQueuePerfTest {
     @Setup
     public void init() {
         this.numOfBatches = (NumOfPingPongs / this.batchSize);
+        this.concurrentLinkedQueueAdapter_Req = new ConcurrentLinkedQueueAdapter<>();
+        this.concurrentLinkedQueueAdapter_Resp = new ConcurrentLinkedQueueAdapter<>();
+        this.ringBufferRelaxedQueue_Req = new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs);
+        this.ringBufferRelaxedQueue_Resp = new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs);
+        this.linkedRelaxedQueue_Req = new LinkedRelaxedQueue<>();
+        this.linkedRelaxedQueue_Resp = new LinkedRelaxedQueue<>();
     }
 
     @Benchmark
     public long concurrentLinkedQueue() {
-        return testImpl(
-                new ConcurrentLinkedQueueAdapter<>(this.batchSize),
-                new ConcurrentLinkedQueueAdapter<>(this.batchSize));
+        return testImpl(this.concurrentLinkedQueueAdapter_Req, this.concurrentLinkedQueueAdapter_Resp);
     }
 
     @Benchmark
     public long ringBufferRelaxedQueue() {
-        return testImpl(
-                new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs, this.batchSize * 10),
-                new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs, this.batchSize * 10));
+        return testImpl(this.ringBufferRelaxedQueue_Req, this.ringBufferRelaxedQueue_Resp);
     }
 
     @Benchmark
     public long linkedRelaxedQueue() {
-        return testImpl(
-                new LinkedRelaxedQueue<>(),
-                new LinkedRelaxedQueue<>());
+        return testImpl(this.linkedRelaxedQueue_Req, this.linkedRelaxedQueue_Resp);
     }
 
     private long testImpl(final RelaxedQueue<Object> requestQueue, final RelaxedQueue<Object> responseQueue) {

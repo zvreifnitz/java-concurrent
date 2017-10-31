@@ -22,8 +22,8 @@ import com.github.zvreifnitz.concurrent.RelaxedQueue;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Array;
-import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -52,7 +52,6 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
     private final T[] storage;
     private final int storageIndexMask;
     private final int size;
-    private final int defaultEnqueueAllSize;
     private final Iterable<T> emptyIterable = new EmptyIterable<>();
 
     private volatile long readCache = 0L;
@@ -68,7 +67,7 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
     private volatile long readCommit = 0L;
 
 
-    public RingBufferRelaxedQueue(final Class<T> clazz, final int size, final int defaultEnqueueAllSize) {
+    public RingBufferRelaxedQueue(final Class<T> clazz, final int size) {
         if (clazz == null) {
             throw new NullPointerException("Parameter clazz must not be null");
         }
@@ -86,11 +85,10 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
         if (sizePow2 < 1) {
             throw new IllegalArgumentException("Parameter size is too big");
         }
-        @SuppressWarnings("unchecked") final T[] storageTmp = (T[]) Array.newInstance(clazz, sizePow2);
+        @SuppressWarnings("unchecked") final T[] storageTmp = (T[])Array.newInstance(clazz, sizePow2);
         this.storage = storageTmp;
         this.size = size;
         this.storageIndexMask = (sizePow2 - 1);
-        this.defaultEnqueueAllSize = defaultEnqueueAllSize;
     }
 
     @Override
@@ -103,7 +101,7 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
         }
 
         final ReservationInterval interval = this.reserveForWrite(items.length);
-        int index = (((int) interval.start) & this.storageIndexMask);
+        int index = (((int)interval.start) & this.storageIndexMask);
         for (int i = 0; i < items.length; i++) {
             this.storage[index] = items[i];
             index = ((index + 1) & this.storageIndexMask);
@@ -126,30 +124,32 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
         if (iterator == null) {
             return 0;
         }
-        final List<T> collection = new ArrayList<>(this.defaultEnqueueAllSize);
+        int count = 0;
+        final List<T> collection = new LinkedList<>();
         while (iterator.hasNext()) {
             collection.add(checkItem(iterator.next()));
+            count++;
         }
-        if ((collection.size() == 0) || (collection.size() > this.size)) {
+        if ((count == 0) || (count > this.size)) {
             return 0;
         }
 
-        final ReservationInterval interval = this.reserveForWrite(collection.size());
-        int index = (((int) interval.start) & this.storageIndexMask);
-        for (int i = 0; i < collection.size(); i++) {
-            this.storage[index] = collection.get(i);
+        final ReservationInterval interval = this.reserveForWrite(count);
+        int index = (((int)interval.start) & this.storageIndexMask);
+        for (final T item : collection) {
+            this.storage[index] = item;
             index = ((index + 1) & this.storageIndexMask);
         }
         this.commitWrite(interval);
 
-        return collection.size();
+        return count;
     }
 
     @Override
     public void enqueue(final T item) {
         checkItem(item);
         final ReservationInterval interval = this.reserveForWrite(1);
-        this.storage[((int) interval.start) & this.storageIndexMask] = item;
+        this.storage[((int)interval.start) & this.storageIndexMask] = item;
         this.commitWrite(interval);
     }
 
@@ -159,7 +159,7 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
         if (interval.size == 0) {
             return null;
         }
-        final T result = this.readAndNullify(((int) interval.start) & this.storageIndexMask);
+        final T result = this.readAndNullify(((int)interval.start) & this.storageIndexMask);
         this.commitRead(interval);
         return result;
     }
@@ -170,8 +170,8 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
         if (interval.size == 0) {
             return this.emptyIterable;
         }
-        final List<T> result = new ArrayList<>(interval.size);
-        int index = (((int) interval.start) & this.storageIndexMask);
+        final List<T> result = new LinkedList<>();
+        int index = (((int)interval.start) & this.storageIndexMask);
         for (int i = 0; i < interval.size; i++) {
             result.add(this.readAndNullify(index));
             index = ((index + 1) & this.storageIndexMask);
@@ -190,9 +190,9 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
 
     private ReservationInterval reserveForWrite(final int desiredSize) {
         while (true) {
-            final long currentWrite = (long) WriteReservationHandle.getAcquire(this);
+            final long currentWrite = (long)WriteReservationHandle.getAcquire(this);
             final long desiredWrite = (currentWrite + desiredSize);
-            final long cachedRead = (long) ReadCacheHandle.getOpaque(this);
+            final long cachedRead = (long)ReadCacheHandle.getOpaque(this);
             if ((desiredWrite - cachedRead) <= this.size) {
                 if (WriteReservationHandle.weakCompareAndSetRelease(this, currentWrite, desiredWrite)) {
                     return new ReservationInterval(currentWrite, desiredWrite, desiredSize);
@@ -205,19 +205,19 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
 
     private void commitWrite(final ReservationInterval interval) {
         final long start = interval.start;
-        while ((long) WriteCommitHandle.getAcquire(this) != start) {
+        while ((long)WriteCommitHandle.getAcquire(this) != start) {
             Thread.onSpinWait();
         }
         WriteCommitHandle.setRelease(this, interval.end);
     }
 
     private ReservationInterval reserveForRead(final int maxSize) {
-        final long currentRead = (long) ReadReservationHandle.getAcquire(this);
-        final long commitWrite = (long) WriteCommitHandle.getAcquire(this);
+        final long currentRead = (long)ReadReservationHandle.getAcquire(this);
+        final long commitWrite = (long)WriteCommitHandle.getAcquire(this);
         final long desiredRead = Math.min(currentRead + maxSize, commitWrite);
         if ((desiredRead > currentRead)
                 && ReadReservationHandle.weakCompareAndSetRelease(this, currentRead, desiredRead)) {
-            return new ReservationInterval(currentRead, desiredRead, (int) (desiredRead - currentRead));
+            return new ReservationInterval(currentRead, desiredRead, (int)(desiredRead - currentRead));
         } else {
             return new ReservationInterval(currentRead, currentRead, 0);
         }
@@ -225,7 +225,7 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
 
     private void commitRead(final ReservationInterval interval) {
         final long start = interval.start;
-        while ((long) ReadCommitHandle.getAcquire(this) != start) {
+        while ((long)ReadCommitHandle.getAcquire(this) != start) {
             Thread.onSpinWait();
         }
         ReadCommitHandle.setRelease(this, interval.end);

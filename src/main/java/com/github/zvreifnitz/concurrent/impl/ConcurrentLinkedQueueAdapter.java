@@ -21,21 +21,13 @@ import com.github.zvreifnitz.concurrent.RelaxedQueue;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public final class ConcurrentLinkedQueueAdapter<T> implements RelaxedQueue<T> {
 
-    private final ConcurrentLinkedQueue<T> underlyingQueue;
-    private final int defaultEnqueueAllSize;
-
-    public ConcurrentLinkedQueueAdapter(final int defaultEnqueueAllSize) {
-        if (defaultEnqueueAllSize < 1) {
-            throw new IllegalArgumentException("defaultEnqueueAllSize must be at least 1");
-        }
-        this.underlyingQueue = new ConcurrentLinkedQueue<>();
-        this.defaultEnqueueAllSize = defaultEnqueueAllSize;
-    }
+    private final ConcurrentLinkedQueue<T> underlyingQueue = new ConcurrentLinkedQueue<>();
 
     @Override
     public <I extends T> int enqueueAll(final I[] items) {
@@ -63,7 +55,7 @@ public final class ConcurrentLinkedQueueAdapter<T> implements RelaxedQueue<T> {
         if (iterator == null) {
             return 0;
         }
-        final List<T> collection = new ArrayList<>(this.defaultEnqueueAllSize);
+        final List<T> collection = new LinkedList<>();
         while (iterator.hasNext()) {
             collection.add(checkItem(iterator.next()));
         }
@@ -83,7 +75,7 @@ public final class ConcurrentLinkedQueueAdapter<T> implements RelaxedQueue<T> {
 
     @Override
     public Iterable<T> dequeueAll() {
-        final List<T> result = new ArrayList<>(this.underlyingQueue.size() << 1);
+        final List<T> result = new LinkedList<>();
         T item = null;
         while ((item = this.underlyingQueue.poll()) != null) {
             result.add(item);
