@@ -180,18 +180,6 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
         return result;
     }
 
-    private LongWrapper createWriteCommitLocal() {
-        final LongWrapper result = new LongWrapper();
-        result.value = (long) WriteCommitHandle.getAcquire(this);
-        return result;
-    }
-
-    private LongWrapper createReadCommitLocal() {
-        final LongWrapper result = new LongWrapper();
-        result.value = (long) ReadCommitHandle.getAcquire(this);
-        return result;
-    }
-
     private T readAndNullify(final int index) {
         try {
             return this.storage[index];
@@ -248,10 +236,6 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
             throw new NullPointerException("item");
         }
         return item;
-    }
-
-    private final static class LongWrapper {
-        private long value;
     }
 
     private final static class ReservationInterval {

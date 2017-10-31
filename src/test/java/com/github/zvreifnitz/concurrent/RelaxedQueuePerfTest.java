@@ -74,8 +74,8 @@ public class RelaxedQueuePerfTest {
     @Benchmark
     public long ringBufferRelaxedQueue() {
         return testImpl(
-                new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs, this.batchSize),
-                new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs, this.batchSize));
+                new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs, this.batchSize * 10),
+                new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs, this.batchSize * 10));
     }
 
     @Benchmark
