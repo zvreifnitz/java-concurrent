@@ -24,16 +24,20 @@ import java.lang.invoke.VarHandle;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+/*
+ * Variation of "Intrusive MPSC node-based queue"
+ * (author: D. Vyukov, link: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue)
+ */
 public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
 
-    private static final VarHandle TailHandle;
-    private static final VarHandle HeadHandle;
+    private static final VarHandle LastHandle;
+    private static final VarHandle FirstHandle;
 
     static {
         try {
             final MethodHandles.Lookup l = MethodHandles.lookup();
-            TailHandle = l.findVarHandle(LinkedRelaxedQueue.class, "tail", Node.class);
-            HeadHandle = l.findVarHandle(LinkedRelaxedQueue.class, "head", Node.class);
+            LastHandle = l.findVarHandle(LinkedRelaxedQueue.class, "last", Node.class);
+            FirstHandle = l.findVarHandle(LinkedRelaxedQueue.class, "first", Node.class);
         } catch (ReflectiveOperationException e) {
             throw new Error(e);
         }
@@ -42,9 +46,9 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     private final Iterable<T> emptyIterable = new EmptyIterable<>();
 
     @jdk.internal.vm.annotation.Contended
-    private volatile Node<T> head = new Node<>(null);
+    private volatile Node<T> first = new Node<>(null);
     @jdk.internal.vm.annotation.Contended
-    private volatile Node<T> tail = this.head;
+    private volatile Node<T> last = this.first;
 
     @SuppressWarnings("unchecked")
     @Override
@@ -52,15 +56,15 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
         if ((items == null) || (items.length == 0)) {
             return 0;
         }
-        final Node<T> head = new Node<>(checkItem(items[0]));
-        Node<T> tail = head;
+        final Node<T> first = new Node<>(checkItem(items[0]));
+        Node<T> last = first;
         for (int i = 1; i < items.length; i++) {
-            final Node<T> newTail = new Node<>(checkItem(items[i]));
-            Node.NextHandle.set(tail, newTail);
-            tail = newTail;
+            final Node<T> newLast = new Node<>(checkItem(items[i]));
+            Node.NextHandle.set(last, newLast);
+            last = newLast;
         }
-        final Node<T> oldTail = (Node<T>)TailHandle.getAndSetRelease(this, tail);
-        Node.NextHandle.setOpaque(oldTail, head);
+        final Node<T> oldLast = (Node<T>)LastHandle.getAndSetRelease(this, last);
+        Node.NextHandle.setOpaque(oldLast, first);
         return items.length;
     }
 
@@ -79,83 +83,83 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
         if ((iterator == null) || (!iterator.hasNext())) {
             return 0;
         }
-        final Node<T> head = new Node<>(checkItem(iterator.next()));
+        final Node<T> first = new Node<>(checkItem(iterator.next()));
         int count = 1;
-        Node<T> tail = head;
+        Node<T> last = first;
         while (iterator.hasNext()) {
-            final Node<T> newTail = new Node<>(checkItem(iterator.next()));
-            Node.NextHandle.set(tail, newTail);
-            tail = newTail;
+            final Node<T> newLast = new Node<>(checkItem(iterator.next()));
+            Node.NextHandle.set(last, newLast);
+            last = newLast;
             count++;
         }
-        final Node<T> oldTail = (Node<T>)TailHandle.getAndSetRelease(this, tail);
-        Node.NextHandle.setOpaque(oldTail, head);
+        final Node<T> oldLast = (Node<T>)LastHandle.getAndSetRelease(this, last);
+        Node.NextHandle.setOpaque(oldLast, first);
         return count;
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public void enqueue(final T item) {
-        final Node<T> newTail = new Node<>(checkItem(item));
-        final Node<T> oldTail = (Node<T>)TailHandle.getAndSetRelease(this, newTail);
-        Node.NextHandle.setOpaque(oldTail, newTail);
+        final Node<T> newLast = new Node<>(checkItem(item));
+        final Node<T> oldLast = (Node<T>)LastHandle.getAndSetRelease(this, newLast);
+        Node.NextHandle.setOpaque(oldLast, newLast);
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public T dequeue() {
         while (true) {
-            final Node<T> currentHead = (Node<T>)HeadHandle.getAcquire(this);
-            final Node<T> nextHead = (Node<T>)Node.NextHandle.getOpaque(currentHead);
-            if (nextHead == null) {
+            final Node<T> first = (Node<T>)FirstHandle.getAcquire(this);
+            final Node<T> next = (Node<T>)Node.NextHandle.getOpaque(first);
+            if (next == null) {
                 return null;
             }
-            if (!HeadHandle.weakCompareAndSetRelease(this, currentHead, nextHead)) {
+            if (!FirstHandle.weakCompareAndSetRelease(this, first, next)) {
                 continue;
             }
-            return nextHead.content;
+            return next.content;
         }
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public Iterable<T> dequeueAll() {
-        final Node<T> currentHead = (Node<T>)HeadHandle.getAcquire(this);
-        final Node<T> nextHead = (Node<T>)Node.NextHandle.getOpaque(currentHead);
-        if (nextHead == null) {
+        final Node<T> first = (Node<T>)FirstHandle.getAcquire(this);
+        final Node<T> next = (Node<T>)Node.NextHandle.getOpaque(first);
+        if (next == null) {
             return this.emptyIterable;
         }
-        return (Node.NextHandle.getOpaque(nextHead) == null)
-                ? getItem(currentHead, nextHead)
-                : getItems(currentHead, nextHead);
+        return (Node.NextHandle.getOpaque(next) == null)
+                ? getItem(first, next)
+                : getItems(first, next);
     }
 
     @SuppressWarnings("unchecked")
-    private Iterable<T> getItem(Node<T> currentHead, Node<T> nextHead) {
+    private Iterable<T> getItem(Node<T> first, Node<T> next) {
         while (true) {
-            if (HeadHandle.weakCompareAndSetRelease(this, currentHead, nextHead)) {
-                return new ItemIterable<>(nextHead);
+            if (FirstHandle.weakCompareAndSetRelease(this, first, next)) {
+                return new ItemIterable<>(next);
             }
-            currentHead = (Node<T>)HeadHandle.getAcquire(this);
-            nextHead = (Node<T>)Node.NextHandle.getOpaque(currentHead);
-            if (nextHead == null) {
+            first = (Node<T>)FirstHandle.getAcquire(this);
+            next = (Node<T>)Node.NextHandle.getOpaque(first);
+            if (next == null) {
                 return this.emptyIterable;
             }
         }
     }
 
     @SuppressWarnings("unchecked")
-    private Iterable<T> getItems(Node<T> currentHead, Node<T> nextHead) {
-        final Node<T> newTail = new Node<>(null);
+    private Iterable<T> getItems(Node<T> first, Node<T> next) {
+        final Node<T> newLast = new Node<>(null);
         while (true) {
-            if (HeadHandle.weakCompareAndSetRelease(this, currentHead, newTail)) {
-                final Node<T> oldTail = (Node<T>)TailHandle.getAndSetRelease(this, newTail);
-                Node.NextHandle.setOpaque(oldTail, newTail);
-                return new ItemsIterable<>(nextHead, newTail);
+            if (FirstHandle.weakCompareAndSetRelease(this, first, newLast)) {
+                final Node<T> oldLast = (Node<T>)LastHandle.getAndSetRelease(this, newLast);
+                Node.NextHandle.setOpaque(oldLast, newLast);
+                return new ItemsIterable<>(next, newLast);
             }
-            currentHead = (Node<T>)HeadHandle.getAcquire(this);
-            nextHead = (Node<T>)Node.NextHandle.getOpaque(currentHead);
-            if (nextHead == null) {
+            first = (Node<T>)FirstHandle.getAcquire(this);
+            next = (Node<T>)Node.NextHandle.getOpaque(first);
+            if (next == null) {
                 return this.emptyIterable;
             }
         }
@@ -209,65 +213,65 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
 
     private final static class ItemsIterable<T> implements Iterable<T> {
 
-        private Node<T> startNode;
-        private Node<T> endNode;
+        private Node<T> first;
+        private Node<T> last;
 
-        private ItemsIterable(final Node<T> startNode, final Node<T> endNode) {
-            this.startNode = startNode;
-            this.endNode = endNode;
+        private ItemsIterable(final Node<T> first, final Node<T> last) {
+            this.first = first;
+            this.last = last;
         }
 
         @Override
         public Iterator<T> iterator() {
-            return new ItemsIterator<>(this.startNode, this.endNode);
+            return new ItemsIterator<>(this.first, this.last);
         }
     }
 
     private final static class ItemsIterator<T> implements Iterator<T> {
 
-        private Node<T> nextNode;
-        private Node<T> endNode;
+        private Node<T> next;
+        private Node<T> last;
 
-        private T nextItem = null;
+        private T item = null;
 
-        private ItemsIterator(final Node<T> startNode, final Node<T> endNode) {
-            this.nextNode = startNode;
-            this.endNode = endNode;
-            this.nextItem = this.fetchNextItem();
+        private ItemsIterator(final Node<T> first, final Node<T> last) {
+            this.next = first;
+            this.last = last;
+            this.item = this.fetchItem();
         }
 
         @Override
         public boolean hasNext() {
-            return (this.nextItem != null);
+            return (this.item != null);
         }
 
         @Override
         public T next() {
-            if (this.nextItem == null) {
+            if (this.item == null) {
                 throw new NoSuchElementException();
             }
-            final T currentItem = this.nextItem;
-            this.nextItem = this.fetchNextItem();
+            final T currentItem = this.item;
+            this.item = this.fetchItem();
             return currentItem;
         }
 
-        private T fetchNextItem() {
-            final Node<T> currentNode = this.nextNode;
-            if (currentNode == null) {
+        private T fetchItem() {
+            final Node<T> current = this.next;
+            if (current == null) {
                 return null;
             }
-            this.nextNode = this.fetchNextNode();
-            return currentNode.content;
+            this.next = this.fetchNode();
+            return current.content;
         }
 
         @SuppressWarnings("unchecked")
-        private Node<T> fetchNextNode() {
-            final Node<T> node = this.nextNode;
+        private Node<T> fetchNode() {
+            final Node<T> node = this.next;
             Node<T> result;
             while ((result = (Node<T>)Node.NextHandle.getOpaque(node)) == null) {
                 Thread.onSpinWait();
             }
-            return (result == this.endNode) ? null : result;
+            return (result == this.last) ? null : result;
         }
     }
 
@@ -287,24 +291,24 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
 
     private final static class ItemIterator<T> implements Iterator<T> {
 
-        private T nextItem = null;
+        private T item = null;
 
         private ItemIterator(final Node<T> node) {
-            this.nextItem = node.content;
+            this.item = node.content;
         }
 
         @Override
         public boolean hasNext() {
-            return (this.nextItem != null);
+            return (this.item != null);
         }
 
         @Override
         public T next() {
-            if (this.nextItem == null) {
+            if (this.item == null) {
                 throw new NoSuchElementException();
             }
-            final T currentItem = this.nextItem;
-            this.nextItem = null;
+            final T currentItem = this.item;
+            this.item = null;
             return currentItem;
         }
     }

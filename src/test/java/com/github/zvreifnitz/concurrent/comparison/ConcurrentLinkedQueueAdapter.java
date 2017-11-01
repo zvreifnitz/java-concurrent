@@ -15,7 +15,7 @@
  *
  */
 
-package com.github.zvreifnitz.concurrent.impl;
+package com.github.zvreifnitz.concurrent.comparison;
 
 import com.github.zvreifnitz.concurrent.RelaxedQueue;
 
@@ -56,11 +56,13 @@ public final class ConcurrentLinkedQueueAdapter<T> implements RelaxedQueue<T> {
             return 0;
         }
         final List<T> collection = new LinkedList<>();
+        int count = 0;
         while (iterator.hasNext()) {
             collection.add(checkItem(iterator.next()));
+            count++;
         }
         this.underlyingQueue.addAll(collection);
-        return collection.size();
+        return count;
     }
 
     @Override
