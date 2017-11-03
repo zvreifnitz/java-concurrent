@@ -28,7 +28,7 @@ import java.util.NoSuchElementException;
  * Variation of "Intrusive MPSC node-based queue"
  * (author: D. Vyukov, link: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue)
  */
-public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
+public final class LinkedRelaxedQueueWeak2<T> implements RelaxedQueue<T> {
 
     private static final VarHandle TailHandle;
     private static final VarHandle HeadHandle;
@@ -36,8 +36,8 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     static {
         try {
             final MethodHandles.Lookup l = MethodHandles.lookup();
-            TailHandle = l.findVarHandle(LinkedRelaxedQueue.class, "tail", Node.class);
-            HeadHandle = l.findVarHandle(LinkedRelaxedQueue.class, "head", Node.class);
+            TailHandle = l.findVarHandle(LinkedRelaxedQueueWeak2.class, "tail", Node.class);
+            HeadHandle = l.findVarHandle(LinkedRelaxedQueueWeak2.class, "head", Node.class);
         } catch (ReflectiveOperationException e) {
             throw new Error(e);
         }
@@ -64,7 +64,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
             last = newLast;
         }
         final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, last);
-        Node.NextHandle.setRelease(oldLast, first);
+        Node.NextHandle.set(oldLast, first);
         return items.length;
     }
 
@@ -93,7 +93,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
             count++;
         }
         final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, last);
-        Node.NextHandle.setRelease(oldLast, first);
+        Node.NextHandle.set(oldLast, first);
         return count;
     }
 
@@ -102,18 +102,18 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     public void enqueue(final T item) {
         final Node<T> newLast = new Node<>(checkItem(item));
         final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, newLast);
-        Node.NextHandle.setRelease(oldLast, newLast);
+        Node.NextHandle.set(oldLast, newLast);
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public T dequeue() {
-        final Node<T> first = (Node<T>)HeadHandle.getAcquire(this);
-        final Node<T> next = (Node<T>)Node.NextHandle.getAcquire(first);
+        final Node<T> first = (Node<T>)HeadHandle.get(this);
+        final Node<T> next = (Node<T>)Node.NextHandle.get(first);
         if (next == null) {
             return null;
         }
-        if (HeadHandle.weakCompareAndSetRelease(this, first, next)) {
+        if (HeadHandle.weakCompareAndSetPlain(this, first, next)) {
             Node.NextHandle.set(first, null);
             return next.content;
         } else {
@@ -124,19 +124,19 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     @SuppressWarnings("unchecked")
     @Override
     public Iterable<T> dequeueAll() {
-        final Node<T> first = (Node<T>)HeadHandle.getAcquire(this);
-        final Node<T> next = (Node<T>)Node.NextHandle.getAcquire(first);
+        final Node<T> first = (Node<T>)HeadHandle.get(this);
+        final Node<T> next = (Node<T>)Node.NextHandle.get(first);
         if (next == null) {
             return this.emptyIterable;
         }
-        return (Node.NextHandle.getOpaque(next) == null)
+        return (Node.NextHandle.get(next) == null)
                 ? getItem(first, next)
                 : getItems(first, next);
     }
 
     @SuppressWarnings("unchecked")
     private Iterable<T> getItem(Node<T> first, Node<T> next) {
-        if (HeadHandle.weakCompareAndSetRelease(this, first, next)) {
+        if (HeadHandle.weakCompareAndSetPlain(this, first, next)) {
             Node.NextHandle.set(first, null);
             return new ItemIterable<>(next);
         } else {
@@ -147,7 +147,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     @SuppressWarnings("unchecked")
     private Iterable<T> getItems(Node<T> first, Node<T> next) {
         final Node<T> newLast = new Node<>(null);
-        if (HeadHandle.weakCompareAndSetRelease(this, first, newLast)) {
+        if (HeadHandle.weakCompareAndSetPlain(this, first, newLast)) {
             final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, newLast);
             return new ItemsIterable<>(next, oldLast);
         } else {
@@ -176,7 +176,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
 
         private volatile Node<I> next;
 
-        private I content;
+        private final I content;
 
         private Node(final I content) {
             this.content = content;
@@ -258,7 +258,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
         private Node<T> fetchNode() {
             Node<T> result;
             final Node<T> node = this.next;
-            while ((result = (Node<T>)Node.NextHandle.getAcquire(node)) == null) {
+            while ((result = (Node<T>)Node.NextHandle.get(node)) == null) {
                 Thread.onSpinWait();
             }
             return result;

@@ -18,21 +18,16 @@
 package com.github.zvreifnitz.concurrent.comparison;
 
 import com.github.zvreifnitz.concurrent.RelaxedQueue;
-import org.jctools.queues.MessagePassingQueue;
-import org.jctools.queues.MpmcArrayQueue;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
-public final class jcToolsMpmcArrayQueue<T> implements RelaxedQueue<T> {
+public final class JavaConcurrentLinkedQueue<T> implements RelaxedQueue<T> {
 
-    private final MpmcArrayQueue<T> underlyingQueue;
-
-    public jcToolsMpmcArrayQueue(final int size) {
-        this.underlyingQueue = new MpmcArrayQueue<>(size);
-    }
+    private final ConcurrentLinkedQueue<T> underlyingQueue = new ConcurrentLinkedQueue<>();
 
     @Override
     public <I extends T> int enqueueAll(final I[] items) {
@@ -60,8 +55,8 @@ public final class jcToolsMpmcArrayQueue<T> implements RelaxedQueue<T> {
         if (iterator == null) {
             return 0;
         }
-        int count = 0;
         final List<T> collection = new LinkedList<>();
+        int count = 0;
         while (iterator.hasNext()) {
             collection.add(checkItem(iterator.next()));
             count++;
@@ -72,18 +67,21 @@ public final class jcToolsMpmcArrayQueue<T> implements RelaxedQueue<T> {
 
     @Override
     public void enqueue(final T item) {
-        this.underlyingQueue.offer(checkItem(item));
+        this.underlyingQueue.add(checkItem(item));
     }
 
     @Override
     public T dequeue() {
-        return this.underlyingQueue.relaxedPoll();
+        return this.underlyingQueue.poll();
     }
 
     @Override
     public Iterable<T> dequeueAll() {
-        final ConsumingLinkedList<T> result = new ConsumingLinkedList<>();
-        this.underlyingQueue.drain(result);
+        final List<T> result = new LinkedList<>();
+        T item = null;
+        while ((item = this.underlyingQueue.poll()) != null) {
+            result.add(item);
+        }
         return result;
     }
 
@@ -92,13 +90,5 @@ public final class jcToolsMpmcArrayQueue<T> implements RelaxedQueue<T> {
             throw new NullPointerException("item");
         }
         return item;
-    }
-
-    private final static class ConsumingLinkedList<I> extends LinkedList<I> implements MessagePassingQueue.Consumer<I> {
-
-        @Override
-        public void accept(final I item) {
-            this.add(item);
-        }
     }
 }

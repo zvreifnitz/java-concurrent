@@ -17,10 +17,12 @@
 
 package com.github.zvreifnitz.concurrent;
 
-import com.github.zvreifnitz.concurrent.comparison.ConcurrentLinkedQueueAdapter;
+import com.github.zvreifnitz.concurrent.comparison.JCToolsMpmcArrayQueue;
+import com.github.zvreifnitz.concurrent.comparison.JavaConcurrentLinkedQueue;
 import com.github.zvreifnitz.concurrent.comparison.RingBufferRelaxedQueue;
-import com.github.zvreifnitz.concurrent.comparison.jcToolsMpmcArrayQueue;
 import com.github.zvreifnitz.concurrent.impl.LinkedRelaxedQueue;
+import com.github.zvreifnitz.concurrent.impl.LinkedRelaxedQueueWeak1;
+import com.github.zvreifnitz.concurrent.impl.LinkedRelaxedQueueWeak2;
 import org.openjdk.jmh.annotations.*;
 
 import java.lang.invoke.VarHandle;
@@ -47,60 +49,82 @@ public class RelaxedQueuePerfTest {
     private int batchSize;
     private int numOfBatches;
 
-    private ConcurrentLinkedQueueAdapter<Object> concurrentLinkedQueueAdapter_Req;
-    private ConcurrentLinkedQueueAdapter<Object> concurrentLinkedQueueAdapter_Resp;
+    private JavaConcurrentLinkedQueue<Object> javaConcurrentLinkedQueue_Req;
+    private JavaConcurrentLinkedQueue<Object> javaConcurrentLinkedQueue_Resp;
     private RingBufferRelaxedQueue<Object> ringBufferRelaxedQueue_Req;
     private RingBufferRelaxedQueue<Object> ringBufferRelaxedQueue_Resp;
     private LinkedRelaxedQueue<Object> linkedRelaxedQueue_Req;
     private LinkedRelaxedQueue<Object> linkedRelaxedQueue_Resp;
-    private jcToolsMpmcArrayQueue<Object> jcToolsMpmcArrayQueue_Req;
-    private jcToolsMpmcArrayQueue<Object> jcToolsMpmcArrayQueue_Resp;
+    private LinkedRelaxedQueueWeak2<Object> linkedRelaxedQueueWeak2_Req;
+    private LinkedRelaxedQueueWeak2<Object> linkedRelaxedQueueWeak2_Resp;
+    private LinkedRelaxedQueueWeak1<Object> linkedRelaxedQueueWeak1_Req;
+    private LinkedRelaxedQueueWeak1<Object> linkedRelaxedQueueWeak1_Resp;
+    private JCToolsMpmcArrayQueue<Object> jcToolsMpmcArrayQueue_Req;
+    private JCToolsMpmcArrayQueue<Object> jcToolsMpmcArrayQueue_Resp;
 
     public static void main(final String[] args) {
         final RelaxedQueuePerfTest test = new RelaxedQueuePerfTest();
         test.numOfThreads = 8;
         test.batchSize = 1;
         test.init();
-        final long r1 = test.concurrentLinkedQueue();
-        System.out.println(" concurrentLinkedQueue: " + (r1 / 1_000_000.0));
-        final long r2 = test.ringBufferRelaxedQueue();
-        System.out.println(" jcToolsMpmcArrayQueue: " + (r2 / 1_000_000.0));
-        final long r3 = test.ringBufferRelaxedQueue();
-        System.out.println("ringBufferRelaxedQueue: " + (r3 / 1_000_000.0));
-        final long r4 = test.linkedRelaxedQueue();
-        System.out.println("    linkedRelaxedQueue: " + (r4 / 1_000_000.0));
+        final long r1 = test.java_ConcurrentLinkedQueue();
+        System.out.println("   concurrentLinkedQueue: " + (r1 / 1_000_000.0));
+        final long r2 = test.jcTools_MpmcArrayQueue();
+        System.out.println("   jcToolsMpmcArrayQueue: " + (r2 / 1_000_000.0));
+        final long r3 = test.custom_RingBufferRelaxedQueue();
+        System.out.println("  ringBufferRelaxedQueue: " + (r3 / 1_000_000.0));
+        final long r4 = test.custom_LinkedRelaxedQueue();
+        System.out.println("      linkedRelaxedQueue: " + (r4 / 1_000_000.0));
+        final long r5 = test.custom_LinkedRelaxedQueueWeak1();
+        System.out.println(" linkedRelaxedQueueWeak1: " + (r5 / 1_000_000.0));
+        final long r6 = test.custom_LinkedRelaxedQueueWeak2();
+        System.out.println(" linkedRelaxedQueueWeak2: " + (r6 / 1_000_000.0));
     }
 
     @Setup
     public void init() {
         this.numOfBatches = (NumOfPingPongs / this.batchSize);
-        this.concurrentLinkedQueueAdapter_Req = new ConcurrentLinkedQueueAdapter<>();
-        this.concurrentLinkedQueueAdapter_Resp = new ConcurrentLinkedQueueAdapter<>();
+        this.javaConcurrentLinkedQueue_Req = new JavaConcurrentLinkedQueue<>();
+        this.javaConcurrentLinkedQueue_Resp = new JavaConcurrentLinkedQueue<>();
         this.ringBufferRelaxedQueue_Req = new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs);
         this.ringBufferRelaxedQueue_Resp = new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs);
         this.linkedRelaxedQueue_Req = new LinkedRelaxedQueue<>();
         this.linkedRelaxedQueue_Resp = new LinkedRelaxedQueue<>();
-        this.jcToolsMpmcArrayQueue_Req = new jcToolsMpmcArrayQueue<>(NumOfPingPongs);
-        this.jcToolsMpmcArrayQueue_Resp = new jcToolsMpmcArrayQueue<>(NumOfPingPongs);
+        this.linkedRelaxedQueueWeak1_Req = new LinkedRelaxedQueueWeak1<>();
+        this.linkedRelaxedQueueWeak1_Resp = new LinkedRelaxedQueueWeak1<>();
+        this.linkedRelaxedQueueWeak2_Req = new LinkedRelaxedQueueWeak2<>();
+        this.linkedRelaxedQueueWeak2_Resp = new LinkedRelaxedQueueWeak2<>();
+        this.jcToolsMpmcArrayQueue_Req = new JCToolsMpmcArrayQueue<>(NumOfPingPongs);
+        this.jcToolsMpmcArrayQueue_Resp = new JCToolsMpmcArrayQueue<>(NumOfPingPongs);
     }
 
-    @Benchmark
-    public long concurrentLinkedQueue() {
-        return testImpl(this.concurrentLinkedQueueAdapter_Req, this.concurrentLinkedQueueAdapter_Resp);
+    //@Benchmark
+    public long java_ConcurrentLinkedQueue() {
+        return testImpl(this.javaConcurrentLinkedQueue_Req, this.javaConcurrentLinkedQueue_Resp);
     }
 
-    @Benchmark
-    public long ringBufferRelaxedQueue() {
+    //@Benchmark
+    public long custom_RingBufferRelaxedQueue() {
         return testImpl(this.ringBufferRelaxedQueue_Req, this.ringBufferRelaxedQueue_Resp);
     }
 
     @Benchmark
-    public long linkedRelaxedQueue() {
+    public long custom_LinkedRelaxedQueue() {
         return testImpl(this.linkedRelaxedQueue_Req, this.linkedRelaxedQueue_Resp);
     }
 
     @Benchmark
-    public long jcToolsMpmcArrayQueue() {
+    public long custom_LinkedRelaxedQueueWeak1() {
+        return testImpl(this.linkedRelaxedQueueWeak1_Req, this.linkedRelaxedQueueWeak1_Resp);
+    }
+
+    @Benchmark
+    public long custom_LinkedRelaxedQueueWeak2() {
+        return testImpl(this.linkedRelaxedQueueWeak2_Req, this.linkedRelaxedQueueWeak2_Resp);
+    }
+
+    //@Benchmark
+    public long jcTools_MpmcArrayQueue() {
         return testImpl(this.jcToolsMpmcArrayQueue_Req, this.jcToolsMpmcArrayQueue_Resp);
     }
 

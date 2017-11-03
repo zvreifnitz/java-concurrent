@@ -28,7 +28,7 @@ import java.util.NoSuchElementException;
  * Variation of "Intrusive MPSC node-based queue"
  * (author: D. Vyukov, link: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue)
  */
-public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
+public final class LinkedRelaxedQueueWeak1<T> implements RelaxedQueue<T> {
 
     private static final VarHandle TailHandle;
     private static final VarHandle HeadHandle;
@@ -36,8 +36,8 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     static {
         try {
             final MethodHandles.Lookup l = MethodHandles.lookup();
-            TailHandle = l.findVarHandle(LinkedRelaxedQueue.class, "tail", Node.class);
-            HeadHandle = l.findVarHandle(LinkedRelaxedQueue.class, "head", Node.class);
+            TailHandle = l.findVarHandle(LinkedRelaxedQueueWeak1.class, "tail", Node.class);
+            HeadHandle = l.findVarHandle(LinkedRelaxedQueueWeak1.class, "head", Node.class);
         } catch (ReflectiveOperationException e) {
             throw new Error(e);
         }
@@ -108,12 +108,12 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     @SuppressWarnings("unchecked")
     @Override
     public T dequeue() {
-        final Node<T> first = (Node<T>)HeadHandle.getAcquire(this);
+        final Node<T> first = (Node<T>)HeadHandle.get(this);
         final Node<T> next = (Node<T>)Node.NextHandle.getAcquire(first);
         if (next == null) {
             return null;
         }
-        if (HeadHandle.weakCompareAndSetRelease(this, first, next)) {
+        if (HeadHandle.weakCompareAndSetPlain(this, first, next)) {
             Node.NextHandle.set(first, null);
             return next.content;
         } else {
@@ -124,7 +124,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     @SuppressWarnings("unchecked")
     @Override
     public Iterable<T> dequeueAll() {
-        final Node<T> first = (Node<T>)HeadHandle.getAcquire(this);
+        final Node<T> first = (Node<T>)HeadHandle.get(this);
         final Node<T> next = (Node<T>)Node.NextHandle.getAcquire(first);
         if (next == null) {
             return this.emptyIterable;
@@ -136,7 +136,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
 
     @SuppressWarnings("unchecked")
     private Iterable<T> getItem(Node<T> first, Node<T> next) {
-        if (HeadHandle.weakCompareAndSetRelease(this, first, next)) {
+        if (HeadHandle.weakCompareAndSetPlain(this, first, next)) {
             Node.NextHandle.set(first, null);
             return new ItemIterable<>(next);
         } else {
@@ -147,7 +147,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     @SuppressWarnings("unchecked")
     private Iterable<T> getItems(Node<T> first, Node<T> next) {
         final Node<T> newLast = new Node<>(null);
-        if (HeadHandle.weakCompareAndSetRelease(this, first, newLast)) {
+        if (HeadHandle.weakCompareAndSetPlain(this, first, newLast)) {
             final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, newLast);
             return new ItemsIterable<>(next, oldLast);
         } else {
