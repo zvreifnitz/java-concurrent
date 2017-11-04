@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit;
 public class RelaxedQueuePerfTest {
 
     private final static Object Msg = new Object();
-    private final static int NumOfPingPongs = 1_000_000;
+    private final static int NumOfPingPongs = 10_000_000;
 
     @Param({"1", "2", "4", "8"})
     private int numOfThreads;
@@ -83,7 +83,7 @@ public class RelaxedQueuePerfTest {
 
     @Setup
     public void init() {
-        this.numOfBatches = (NumOfPingPongs / this.batchSize);
+        this.numOfBatches = (NumOfPingPongs / (this.batchSize * this.numOfBatches));
         this.javaConcurrentLinkedQueue_Req = new JavaConcurrentLinkedQueue<>();
         this.javaConcurrentLinkedQueue_Resp = new JavaConcurrentLinkedQueue<>();
         this.ringBufferRelaxedQueue_Req = new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs);
