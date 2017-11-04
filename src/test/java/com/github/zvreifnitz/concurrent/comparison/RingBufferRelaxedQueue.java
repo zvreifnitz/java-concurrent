@@ -101,10 +101,9 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
         }
 
         final Reservation reservation = this.reserveForWrite(items.length);
-        int index = (((int)reservation.start) & this.storageIndexMask);
+        final int start = (((int)reservation.start) & this.storageIndexMask);
         for (int i = 0; i < items.length; i++) {
-            this.storage[index] = items[i];
-            index = ((index + 1) & this.storageIndexMask);
+            this.storage[(start + i) & this.storageIndexMask] = items[i];
         }
         this.commitWrite(reservation);
 
@@ -170,10 +169,9 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
             return this.emptyIterable;
         }
         final List<T> result = new LinkedList<>();
-        int index = (((int)reservation.start) & this.storageIndexMask);
+        final int start = (((int)reservation.start) & this.storageIndexMask);
         for (int i = 0; i < reservation.size; i++) {
-            result.add(this.readAndNullify(index));
-            index = ((index + 1) & this.storageIndexMask);
+            result.add(this.readAndNullify((start + i) & this.storageIndexMask));
         }
         this.commitRead(reservation);
         return result;
