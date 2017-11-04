@@ -83,7 +83,7 @@ public class RelaxedQueuePerfTest {
 
     @Setup
     public void init() {
-        this.numOfBatches = (NumOfPingPongs / (this.batchSize * this.numOfBatches));
+        this.numOfBatches = (NumOfPingPongs / (this.batchSize * this.numOfThreads));
         this.javaConcurrentLinkedQueue_Req = new JavaConcurrentLinkedQueue<>();
         this.javaConcurrentLinkedQueue_Resp = new JavaConcurrentLinkedQueue<>();
         this.ringBufferRelaxedQueue_Req = new RingBufferRelaxedQueue<>(Object.class, NumOfPingPongs);
