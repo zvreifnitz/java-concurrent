@@ -18,8 +18,7 @@
 package com.github.zvreifnitz.concurrent;
 
 import com.github.zvreifnitz.concurrent.impl.LinkedRelaxedQueue;
-import com.github.zvreifnitz.concurrent.impl.LinkedRelaxedQueueWeak1;
-import com.github.zvreifnitz.concurrent.impl.LinkedRelaxedQueueWeak2;
+import com.github.zvreifnitz.concurrent.impl.LinkedRelaxedQueueWeak;
 import org.openjdk.jmh.annotations.*;
 
 import java.util.concurrent.TimeUnit;
@@ -42,10 +41,8 @@ public class RelaxedQueuePerfTest {
 
     private LinkedRelaxedQueue<Object> strongQueue_Req;
     private LinkedRelaxedQueue<Object> strongQueue_Resp;
-    private LinkedRelaxedQueueWeak1<Object> weakQueue1_Req;
-    private LinkedRelaxedQueueWeak1<Object> weakQueue1_Resp;
-    private LinkedRelaxedQueueWeak2<Object> weakQueue2_Req;
-    private LinkedRelaxedQueueWeak2<Object> weakQueue2_Resp;
+    private LinkedRelaxedQueueWeak<Object> weakQueue_Req;
+    private LinkedRelaxedQueueWeak<Object> weakQueue_Resp;
 
     public static void main(final String[] args) {
         final RelaxedQueuePerfTest test = new RelaxedQueuePerfTest();
@@ -54,10 +51,8 @@ public class RelaxedQueuePerfTest {
         test.init();
         final long r1 = test.strongQueue();
         System.out.println("strongQueue: " + (r1 / 1_000_000.0));
-        final long r2 = test.weakQueue1();
-        System.out.println(" weakQueue1: " + (r2 / 1_000_000.0));
-        final long r3 = test.weakQueue2();
-        System.out.println(" weakQueue2: " + (r3 / 1_000_000.0));
+        final long r2 = test.weakQueue();
+        System.out.println("  weakQueue: " + (r2 / 1_000_000.0));
     }
 
     @Setup
@@ -65,10 +60,8 @@ public class RelaxedQueuePerfTest {
         this.numOfBatches = ((this.batchSize > 0) ? (NumOfPingPongs / (this.batchSize * this.numOfThreads)) : NumOfPingPongs);
         this.strongQueue_Req = new LinkedRelaxedQueue<>();
         this.strongQueue_Resp = new LinkedRelaxedQueue<>();
-        this.weakQueue1_Req = new LinkedRelaxedQueueWeak1<>();
-        this.weakQueue1_Resp = new LinkedRelaxedQueueWeak1<>();
-        this.weakQueue2_Req = new LinkedRelaxedQueueWeak2<>();
-        this.weakQueue2_Resp = new LinkedRelaxedQueueWeak2<>();
+        this.weakQueue_Req = new LinkedRelaxedQueueWeak<>();
+        this.weakQueue_Resp = new LinkedRelaxedQueueWeak<>();
     }
 
     @Benchmark
@@ -78,14 +71,8 @@ public class RelaxedQueuePerfTest {
     }
 
     @Benchmark
-    public long weakQueue1() {
-        return TestScenario.exec(this.weakQueue1_Req, this.weakQueue1_Resp,
-                this.numOfThreads, this.numOfBatches, this.batchSize);
-    }
-
-    @Benchmark
-    public long weakQueue2() {
-        return TestScenario.exec(this.weakQueue2_Req, this.weakQueue2_Resp,
+    public long weakQueue() {
+        return TestScenario.exec(this.weakQueue_Req, this.weakQueue_Resp,
                 this.numOfThreads, this.numOfBatches, this.batchSize);
     }
 }

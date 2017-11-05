@@ -10,7 +10,9 @@ final class TestScenario {
 
     private final static Object Msg = new Object();
 
-    static long exec(final RelaxedQueue<Object> requestQueue, final RelaxedQueue<Object> responseQueue, final int numOfThreads, final int numOfBatches, final int batchSize) {
+    static long exec(final RelaxedQueue<Object> requestQueue, final RelaxedQueue<Object> responseQueue,
+                     final int numOfThreads, final int numOfBatches, final int batchSize) {
+
         final List<Pinger> pingers = new ArrayList<>(numOfThreads);
         for (int i = 0; i < numOfThreads; i++) {
             pingers.add(new Pinger(requestQueue, responseQueue, numOfBatches, batchSize));

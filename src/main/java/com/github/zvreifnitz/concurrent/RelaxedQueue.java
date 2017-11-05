@@ -28,6 +28,8 @@ public interface RelaxedQueue<T> {
 
     void enqueue(final T item);
 
+    boolean isEmpty();
+
     T dequeue();
 
     Iterable<T> dequeueAll();

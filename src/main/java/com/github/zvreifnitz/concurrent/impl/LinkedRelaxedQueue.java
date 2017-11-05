@@ -63,8 +63,8 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
             Node.NextHandle.set(last, newLast);
             last = newLast;
         }
-        final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, last);
-        Node.NextHandle.setRelease(oldLast, first);
+        final Node<T> oldLast = (Node<T>)TailHandle.getAndSet(this, last);
+        Node.NextHandle.setVolatile(oldLast, first);
         return items.length;
     }
 
@@ -92,8 +92,8 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
             last = newLast;
             count++;
         }
-        final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, last);
-        Node.NextHandle.setRelease(oldLast, first);
+        final Node<T> oldLast = (Node<T>)TailHandle.getAndSet(this, last);
+        Node.NextHandle.setVolatile(oldLast, first);
         return count;
     }
 
@@ -101,19 +101,27 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     @Override
     public void enqueue(final T item) {
         final Node<T> newLast = new Node<>(checkItem(item));
-        final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, newLast);
-        Node.NextHandle.setRelease(oldLast, newLast);
+        final Node<T> oldLast = (Node<T>)TailHandle.getAndSet(this, newLast);
+        Node.NextHandle.setVolatile(oldLast, newLast);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public boolean isEmpty() {
+        final Node<T> first = (Node<T>)HeadHandle.getVolatile(this);
+        final Node<T> next = (Node<T>)Node.NextHandle.getVolatile(first);
+        return (next == null);
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public T dequeue() {
-        final Node<T> first = (Node<T>)HeadHandle.getAcquire(this);
-        final Node<T> next = (Node<T>)Node.NextHandle.getAcquire(first);
+        final Node<T> first = (Node<T>)HeadHandle.getVolatile(this);
+        final Node<T> next = (Node<T>)Node.NextHandle.getVolatile(first);
         if (next == null) {
             return null;
         }
-        if (HeadHandle.weakCompareAndSetRelease(this, first, next)) {
+        if (HeadHandle.compareAndSet(this, first, next)) {
             Node.NextHandle.set(first, null);
             return next.content;
         } else {
@@ -124,8 +132,8 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     @SuppressWarnings("unchecked")
     @Override
     public Iterable<T> dequeueAll() {
-        final Node<T> first = (Node<T>)HeadHandle.getAcquire(this);
-        final Node<T> next = (Node<T>)Node.NextHandle.getAcquire(first);
+        final Node<T> first = (Node<T>)HeadHandle.getVolatile(this);
+        final Node<T> next = (Node<T>)Node.NextHandle.getVolatile(first);
         if (next == null) {
             return this.emptyIterable;
         }
@@ -136,7 +144,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
 
     @SuppressWarnings("unchecked")
     private Iterable<T> getItem(Node<T> first, Node<T> next) {
-        if (HeadHandle.weakCompareAndSetRelease(this, first, next)) {
+        if (HeadHandle.compareAndSet(this, first, next)) {
             Node.NextHandle.set(first, null);
             return new ItemIterable<>(next);
         } else {
@@ -147,8 +155,8 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     @SuppressWarnings("unchecked")
     private Iterable<T> getItems(Node<T> first, Node<T> next) {
         final Node<T> newLast = new Node<>(null);
-        if (HeadHandle.weakCompareAndSetRelease(this, first, newLast)) {
-            final Node<T> oldLast = (Node<T>)TailHandle.getAndSetRelease(this, newLast);
+        if (HeadHandle.compareAndSet(this, first, newLast)) {
+            final Node<T> oldLast = (Node<T>)TailHandle.getAndSet(this, newLast);
             return new ItemsIterable<>(next, oldLast);
         } else {
             return this.emptyIterable;
@@ -258,7 +266,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
         private Node<T> fetchNode() {
             Node<T> result;
             final Node<T> node = this.next;
-            while ((result = (Node<T>)Node.NextHandle.getAcquire(node)) == null) {
+            while ((result = (Node<T>)Node.NextHandle.getVolatile(node)) == null) {
                 Thread.onSpinWait();
             }
             return result;
