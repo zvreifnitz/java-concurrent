@@ -71,6 +71,11 @@ public final class JavaConcurrentLinkedQueue<T> implements RelaxedQueue<T> {
     }
 
     @Override
+    public boolean isEmpty() {
+        return this.underlyingQueue.isEmpty();
+    }
+
+    @Override
     public T dequeue() {
         return this.underlyingQueue.poll();
     }

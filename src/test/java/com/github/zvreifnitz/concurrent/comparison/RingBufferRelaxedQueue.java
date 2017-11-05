@@ -152,6 +152,13 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
     }
 
     @Override
+    public boolean isEmpty() {
+        final long commitWrite = (long)WriteCommitHandle.getAcquire(this);
+        final long commitRead = (long)ReadCommitHandle.getAcquire(this);
+        return (commitWrite == commitRead);
+    }
+
+    @Override
     public T dequeue() {
         final Reservation reservation = this.reserveForRead(1);
         if (reservation.size == 0) {

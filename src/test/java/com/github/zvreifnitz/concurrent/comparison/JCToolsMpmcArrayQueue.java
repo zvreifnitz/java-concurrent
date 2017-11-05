@@ -76,6 +76,11 @@ public final class JCToolsMpmcArrayQueue<T> implements RelaxedQueue<T> {
     }
 
     @Override
+    public boolean isEmpty() {
+        return this.underlyingQueue.isEmpty();
+    }
+
+    @Override
     public T dequeue() {
         return this.underlyingQueue.relaxedPoll();
     }
