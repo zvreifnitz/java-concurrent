@@ -81,6 +81,16 @@ public final class JavaConcurrentLinkedQueue<T> implements RelaxedQueue<T> {
     }
 
     @Override
+    public Iterable<T> dequeueMany(final int limit) {
+        final List<T> result = new ArrayList<>(limit);
+        T item = null;
+        while ((result.size() < limit) && ((item = this.underlyingQueue.poll()) != null)) {
+            result.add(item);
+        }
+        return result;
+    }
+
+    @Override
     public Iterable<T> dequeueAll() {
         final List<T> result = new LinkedList<>();
         T item = null;

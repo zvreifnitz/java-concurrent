@@ -22,10 +22,7 @@ import com.github.zvreifnitz.concurrent.RelaxedQueue;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.Array;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
 
@@ -170,18 +167,23 @@ public final class RingBufferRelaxedQueue<T> implements RelaxedQueue<T> {
     }
 
     @Override
-    public Iterable<T> dequeueAll() {
-        final Reservation reservation = this.reserveForRead(this.size);
+    public Iterable<T> dequeueMany(final int limit) {
+        final Reservation reservation = this.reserveForRead(limit);
         if (reservation.size == 0) {
             return this.emptyIterable;
         }
-        final List<T> result = new LinkedList<>();
+        final List<T> result = new ArrayList<>(reservation.size);
         final int start = (((int)reservation.start) & this.storageIndexMask);
         for (int i = 0; i < reservation.size; i++) {
             result.add(this.readAndNullify((start + i) & this.storageIndexMask));
         }
         this.commitRead(reservation);
         return result;
+    }
+
+    @Override
+    public Iterable<T> dequeueAll() {
+        return this.dequeueMany(this.size);
     }
 
     private T readAndNullify(final int index) {

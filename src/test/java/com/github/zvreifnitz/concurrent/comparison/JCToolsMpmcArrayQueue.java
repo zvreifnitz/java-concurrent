@@ -86,6 +86,13 @@ public final class JCToolsMpmcArrayQueue<T> implements RelaxedQueue<T> {
     }
 
     @Override
+    public Iterable<T> dequeueMany(final int limit) {
+        final ConsumingLinkedList<T> result = new ConsumingLinkedList<>();
+        this.underlyingQueue.drain(result, limit);
+        return result;
+    }
+
+    @Override
     public Iterable<T> dequeueAll() {
         final ConsumingLinkedList<T> result = new ConsumingLinkedList<>();
         this.underlyingQueue.drain(result);
@@ -100,7 +107,6 @@ public final class JCToolsMpmcArrayQueue<T> implements RelaxedQueue<T> {
     }
 
     private final static class ConsumingLinkedList<I> extends LinkedList<I> implements MessagePassingQueue.Consumer<I> {
-
         @Override
         public void accept(final I item) {
             this.add(item);

@@ -32,5 +32,7 @@ public interface RelaxedQueue<T> {
 
     T dequeue();
 
+    Iterable<T> dequeueMany(final int limit);
+
     Iterable<T> dequeueAll();
 }

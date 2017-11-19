@@ -21,7 +21,9 @@ import com.github.zvreifnitz.concurrent.RelaxedQueue;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NoSuchElementException;
 
 /*
@@ -131,6 +133,19 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
 
     @SuppressWarnings("unchecked")
     @Override
+    public Iterable<T> dequeueMany(final int limit) {
+        final Node<T> first = (Node<T>)HeadHandle.getVolatile(this);
+        final Node<T> next = (Node<T>)Node.NextHandle.getVolatile(first);
+        if (next == null) {
+            return this.emptyIterable;
+        }
+        return (Node.NextHandle.getOpaque(next) == null)
+                ? getItem(first, next)
+                : getItems(limit, first, next);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
     public Iterable<T> dequeueAll() {
         final Node<T> first = (Node<T>)HeadHandle.getVolatile(this);
         final Node<T> next = (Node<T>)Node.NextHandle.getVolatile(first);
@@ -143,7 +158,7 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     }
 
     @SuppressWarnings("unchecked")
-    private Iterable<T> getItem(Node<T> first, Node<T> next) {
+    private Iterable<T> getItem(final Node<T> first, final Node<T> next) {
         if (HeadHandle.compareAndSet(this, first, next)) {
             Node.NextHandle.set(first, null);
             return new ItemIterable<>(next);
@@ -153,11 +168,37 @@ public final class LinkedRelaxedQueue<T> implements RelaxedQueue<T> {
     }
 
     @SuppressWarnings("unchecked")
-    private Iterable<T> getItems(Node<T> first, Node<T> next) {
+    private Iterable<T> getItems(final Node<T> first, final Node<T> next) {
         final Node<T> newLast = new Node<>(null);
         if (HeadHandle.compareAndSet(this, first, newLast)) {
             final Node<T> oldLast = (Node<T>)TailHandle.getAndSet(this, newLast);
             return new ItemsIterable<>(next, oldLast);
+        } else {
+            return this.emptyIterable;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Iterable<T> getItems(final int limit, final Node<T> first, Node<T> next) {
+        final Node<T> newHead = new Node<>(null);
+        if (HeadHandle.compareAndSet(this, first, newHead)) {
+            final List<T> result = new ArrayList<>(limit);
+            do {
+                final Node<T> newNext = (Node<T>)Node.NextHandle.getVolatile(next);
+                if (newNext == null) {
+                    if (HeadHandle.compareAndSet(this, newHead, next)) {
+                        result.add(next.content);
+                        return result;
+                    } else {
+                        break;
+                    }
+                }
+                result.add(next.content);
+                Node.NextHandle.set(next, null);
+                next = newNext;
+            } while (result.size() < limit);
+            Node.NextHandle.setVolatile(newHead, next);
+            return result;
         } else {
             return this.emptyIterable;
         }
